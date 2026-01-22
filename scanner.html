@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#3b82f6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Inventory">
+    <meta name="description" content="Inventory management with barcode scanning">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
+    <title>Inventory Scanner</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; background-color: #f0f2f5; display: flex; flex-direction: column; align-items: center; }
+        h1 { color: #333; text-align: center; }
+        .container { width: 95%; max-width: 500px; margin-top: 15px; }
+        label { display: block; margin-bottom: 2px; font-weight: bold; text-align: left; }
+
+        /* --- TABS --- */
+        .tab-buttons { display: flex; width: 100%; border-bottom: 2px solid #ddd; }
+        .tab-button { flex: 1; padding: 15px; font-size: 16px; font-weight: bold; border: none; background-color: #f8f9fa; cursor: pointer; }
+        .tab-button.active { background-color: #fff; border-top: 2px solid #007bff; border-left: 2px solid #ddd; border-right: 2px solid #ddd; border-bottom: 2px solid #fff; }
+        .tab-content { display: none; background-color: #fff; padding: 20px; border: 2px solid #ddd; border-top: none; }
+        .tab-content.active { display: block; }
+
+        /* --- Scanner --- */
+        #qr-reader { border: 2px solid #ddd; border-radius: 8px; overflow: hidden; }
+        #startButton, #stopButton { display: block; width: 100%; padding: 15px; font-size: 18px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; }
+        #startButton { background-color: #007bff; color: white; }
+        #stopButton { background-color: #dc3545; color: white; display: none; }
+        #scanResult { margin-top: 15px; font-size: 16px; font-weight: bold; text-align: center; color: #155724; }
+
+        /* --- Manual Search --- */
+        #manualSearchInput { width: 95%; padding: 12px; font-size: 18px; border: 1px solid #ccc; border-radius: 4px; }
+        #searchResults { list-style: none; padding: 0; margin-top: 10px; border: 1px solid #ddd; border-radius: 4px; max-height: 250px; overflow-y: auto; }
+        #searchResults li { padding: 15px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+        #searchResults li:last-child { border-bottom: none; }
+        .item-info { display: flex; justify-content: space-between; align-items: center; flex: 1; cursor: pointer; }
+        .item-info:hover { background-color: #f0f0f0; }
+        .item-name { font-weight: 500; }
+        .item-qty { font-weight: bold; color: #007bff; }
+        .item-qty-low { font-weight: bold; color: #dc3545; }
+        .request-order-btn { background-color: #ffc107; color: #212529; padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold; margin-top: 8px; width: 100%; }
+        .request-order-btn:hover { background-color: #e0a800; }
+
+
+        /* --- Apartment Modal --- */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); width: 90%; max-width: 400px; text-align: center; }
+        .modal-content h2 { margin-top: 0; }
+        #itemName { font-weight: bold; color: #0056b3; font-size: 1.2em; margin-bottom: 15px; }
+        #apartmentInput { width: 90%; padding: 12px; font-size: 18px; border: 1px solid #ccc; border-radius: 4px; margin-top: 5px; margin-bottom: 15px; text-align: center; }
+        /* No quantity input here, we'll use the version that asks for multiple */
+
+        /* --- Message/Toast --- */
+        #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #333; color: white; padding: 15px 25px; border-radius: 8px; z-index: 2000; display: none; font-size: 16px; }
+        #toast.success { background-color: #28a745; }
+        #toast.error { background-color: #dc3545; }
+        .language-selector { text-align: center; margin: 15px 0; }
+        .language-selector button { background-color: #007bff; color: white; border: none; padding: 8px 16px; margin: 0 5px; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; }
+        .language-selector button.active { background-color: #0056b3; font-weight: bold; }
+        .language-selector button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+
+    <h1 data-i18n="title">Item Usage</h1>
+
+    <div class="language-selector">
+        <button id="langEN" class="active">English</button>
+        <button id="langES">Español</button>
+    </div>
+
+    <div class="container">
+
+        <div class="tab-buttons">
+            <button class="tab-button active" data-tab="scannerTab" data-i18n="tab_scan">Scan Barcode</button>
+            <button class="tab-button" data-tab="manualTab" data-i18n="tab_manual">Manual Entry</button>
+        </div>
+
+        <div id="scannerTab" class="tab-content active">
+            <button id="startButton" data-i18n="btn_start">Start Scanning</button>
+            <div id="qr-reader"></div>
+            <button id="stopButton" data-i18n="btn_stop">Stop Scanning</button>
+            <div id="scanResult"></div>
+        </div>
+
+        <div id="manualTab" class="tab-content">
+            <label for="itemDropdown" data-i18n="search_label">Select Item:</label>
+            <select id="itemDropdown" style="width: 95%; padding: 12px; font-size: 18px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 15px;">
+                <option value="">-- Select an item --</option>
+            </select>
+            <button type="button" id="selectItemBtn" style="background-color: #007bff; color: white; padding: 12px 20px; font-size: 16px; border: none; border-radius: 4px; cursor: pointer; width: 100%; margin-bottom: 10px;">Log Usage</button>
+            <button type="button" id="selectReorderBtn" style="background-color: #ffc107; color: #212529; padding: 12px 20px; font-size: 16px; border: none; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold;">Request Order</button>
+        </div>
+    </div>
+
+    <div id="apartmentModal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 data-i18n="modal_title">Item Selected</h2>
+            <p id="itemName">Loading...</p>
+            <p id="itemStock" style="font-size: 16px; color: #007bff; font-weight: bold; margin: 10px 0 15px 0;"></p>
+            <form id="usageForm">
+                <div>
+                    <label for="apartmentInput" data-i18n="modal_apartment">What apartment is this for?</label>
+                    <input type="text" id="apartmentInput" data-i18n-placeholder="modal_apartment_placeholder" placeholder="e.g., 101B" required>
+                </div>
+                <div>
+                    <label for="quantityInput" data-i18n="modal_quantity">How many used?</label>
+                    <input type="number" id="quantityInput" value="1" min="1" required style="width: 40%; text-align: center; padding: 12px; font-size: 18px; border: 1px solid #ccc; border-radius: 4px; margin-top: 5px; margin-bottom: 15px;">
+                </div>
+                <div>
+                    <label for="employeeNumberInput" data-i18n="modal_employee">Employee Number</label>
+                    <input type="text" id="employeeNumberInput" data-i18n-placeholder="modal_employee_placeholder" placeholder="e.g., EMP123" style="width: 90%; padding: 12px; font-size: 18px; border: 1px solid #ccc; border-radius: 4px; margin-top: 5px; margin-bottom: 15px; text-align: center;">
+                </div>
+                <div>
+                    <label for="usageSupplierLink" style="font-size: 14px;">Supplier Website Link (Optional):</label>
+                    <input type="url" id="usageSupplierLink" placeholder="https://www.supplier.com/product" style="width: 90%; padding: 12px; font-size: 18px; border: 1px solid #ccc; border-radius: 4px; margin-top: 5px; margin-bottom: 15px; text-align: left;">
+                </div>
+                <button type="submit" id="submitUsageBtn" data-i18n="btn_submit" style="background-color: #28a745; color: white; padding: 12px 20px; font-size: 18px; border: none; border-radius: 4px; cursor: pointer; margin-top: 15px; width: 100%;">Submit</button>
+                <button type="button" id="quickOrderBtn" style="background-color: #ffc107; color: #212529; padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; width: 100%; margin-top: 10px; margin-bottom: 10px;">Request Order</button>
+                <button type="button" id="cancelBtn" data-i18n="btn_cancel" style="background-color: #6c757d; color: white; padding: 12px 20px; font-size: 18px; border: none; border-radius: 4px; cursor: pointer; width: 100%;">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="orderRequestModal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 data-i18n="order_modal_title">Request Item Order</h2>
+            <p id="orderItemName">Loading...</p>
+            <p id="orderItemStock" style="font-size: 16px; color: #dc3545; font-weight: bold; margin: 10px 0 15px 0;"></p>
+            <form id="orderRequestForm">
+                <div>
+                    <label for="quantityNeededInput" data-i18n="order_modal_quantity">How many do you need?</label>
+                    <input type="number" id="quantityNeededInput" value="1" min="1" required style="width: 40%; text-align: center; padding: 12px; font-size: 18px; border: 1px solid #ccc; border-radius: 4px; margin-top: 5px; margin-bottom: 15px;">
+                </div>
+                <div>
+                    <label for="orderApartmentInput" data-i18n="order_modal_apartment">What apartment is this for?</label>
+                    <input type="text" id="orderApartmentInput" data-i18n-placeholder="modal_apartment_placeholder" placeholder="e.g., 101B" required style="width: 90%; padding: 12px; font-size: 18px; border: 1px solid #ccc; border-radius: 4px; margin-top: 5px; margin-bottom: 15px; text-align: center;">
+                </div>
+                <div>
+                    <label for="orderUrlInput" style="font-size: 14px;">Supplier Website Link (Optional):</label>
+                    <input type="url" id="orderUrlInput" placeholder="https://www.supplier.com/product" style="width: 90%; padding: 12px; font-size: 18px; border: 1px solid #ccc; border-radius: 4px; margin-top: 5px; margin-bottom: 15px; text-align: left;">
+                </div>
+                <button type="submit" id="submitOrderBtn" data-i18n="btn_submit_order" style="background-color: #28a745; color: white; padding: 12px 20px; font-size: 18px; border: none; border-radius: 4px; cursor: pointer; margin-top: 15px;">Submit Request</button>
+                <button type="button" id="cancelOrderBtn" data-i18n="btn_cancel" style="background-color: #6c757d; color: white; padding: 12px 20px; font-size: 18px; border: none; border-radius: 4px; cursor: pointer; margin-top: 15px; margin-left: 10px;">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script src="{{ url_for('static', filename='html5-qrcode.min.js') }}"></script>
+
+    <script>
+        // === TRANSLATION SYSTEM ===
+        const translations = {
+            en: {
+                title: "Item Usage",
+                tab_scan: "Scan Barcode",
+                tab_manual: "Manual Entry",
+                btn_start: "Start Scanning",
+                btn_stop: "Stop Scanning",
+                search_label: "Search by Item Name/Category:",
+                search_placeholder: "Type item name...",
+                modal_title: "Item Selected",
+                modal_apartment: "What apartment is this for?",
+                modal_apartment_placeholder: "e.g., 101B",
+                modal_employee: "Employee Number",
+                modal_employee_placeholder: "e.g., EMP123",
+                modal_quantity: "How many used?",
+                btn_submit: "Submit",
+                btn_cancel: "Cancel",
+                msg_scanned: "Scanned",
+                msg_item_not_found: "Item not found",
+                msg_error: "Error",
+                msg_logged_success: "Usage logged successfully. Remaining:",
+                msg_low_stock: "Low stock! Only",
+                msg_low_stock_left: "left",
+                qty_available: "Available",
+                msg_scanning: "Scanning...",
+                msg_camera_error: "Could not start camera. Check permissions.",
+                msg_no_items: "No items found",
+                msg_qty: "Qty",
+                msg_error_results: "Error loading results",
+                msg_missing_fields: "Missing item, apartment number, or quantity!",
+                btn_request_order: "Request Order",
+                order_modal_title: "Request Item Order",
+                order_modal_quantity: "How many do you need?",
+                order_modal_apartment: "What apartment is this for?",
+                btn_submit_order: "Submit Request",
+                msg_order_submitted: "Order request submitted successfully!"
+            },
+            es: {
+                title: "Uso de Artículos",
+                tab_scan: "Escanear Código",
+                tab_manual: "Entrada Manual",
+                btn_start: "Iniciar Escaneo",
+                btn_stop: "Detener Escaneo",
+                search_label: "Buscar por Nombre/Categoría:",
+                search_placeholder: "Escribe el nombre...",
+                modal_title: "Artículo Seleccionado",
+                modal_apartment: "¿Para qué apartamento?",
+                modal_apartment_placeholder: "ej., 101B",
+                modal_employee: "Número de Empleado",
+                modal_employee_placeholder: "ej., EMP123",
+                modal_quantity: "¿Cuántos usados?",
+                btn_submit: "Enviar",
+                btn_cancel: "Cancelar",
+                msg_scanned: "Escaneado",
+                msg_item_not_found: "Artículo no encontrado",
+                msg_error: "Error",
+                msg_logged_success: "Uso registrado exitosamente. Restante:",
+                msg_low_stock: "¡Stock bajo! Solo quedan",
+                msg_low_stock_left: "",
+                qty_available: "Disponible",
+                msg_scanning: "Escaneando...",
+                msg_camera_error: "No se pudo iniciar la cámara. Verifica los permisos.",
+                msg_no_items: "No se encontraron artículos",
+                msg_qty: "Cant",
+                msg_error_results: "Error al cargar resultados",
+                msg_missing_fields: "¡Falta artículo, número de apartamento o cantidad!",
+                btn_request_order: "Solicitar Pedido",
+                order_modal_title: "Solicitar Pedido de Artículo",
+                order_modal_quantity: "¿Cuántos necesita?",
+                order_modal_apartment: "¿Para qué apartamento?",
+                btn_submit_order: "Enviar Solicitud",
+                msg_order_submitted: "¡Solicitud de pedido enviada exitosamente!"
+            }
+        };
+
+        let currentLang = localStorage.getItem('inventoryLang') || 'en';
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            localStorage.setItem('inventoryLang', lang);
+            
+            // Update all elements with data-i18n attribute
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (translations[lang][key]) {
+                    el.textContent = translations[lang][key];
+                }
+            });
+            
+            // Update placeholders
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.getAttribute('data-i18n-placeholder');
+                if (translations[lang][key]) {
+                    el.placeholder = translations[lang][key];
+                }
+            });
+            
+            // Update language buttons
+            document.getElementById('langEN').classList.toggle('active', lang === 'en');
+            document.getElementById('langES').classList.toggle('active', lang === 'es');
+        }
+
+        function t(key) {
+            return translations[currentLang][key] || key;
+        }
+
+        // Set up language switcher
+        document.addEventListener('DOMContentLoaded', () => {
+            setLanguage(currentLang);
+            document.getElementById('langEN').addEventListener('click', () => setLanguage('en'));
+            document.getElementById('langES').addEventListener('click', () => setLanguage('es'));
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Get all our HTML elements ---
+            const modal = document.getElementById('apartmentModal');
+            const usageForm = document.getElementById('usageForm');
+            const itemNameEl = document.getElementById('itemName');
+            const apartmentInput = document.getElementById('apartmentInput');
+            const employeeNumberInput = document.getElementById('employeeNumberInput');
+            const quantityInput = document.getElementById('quantityInput'); // Get quantity
+            const cancelBtn = document.getElementById('cancelBtn');
+            const toast = document.getElementById('toast');
+
+            // Scanner elements
+            const startButton = document.getElementById('startButton');
+            const stopButton = document.getElementById('stopButton');
+            const qrReaderDiv = document.getElementById('qr-reader');
+            const scanResult = document.getElementById('scanResult');
+
+            // Manual select elements
+            const itemDropdown = document.getElementById('itemDropdown');
+            const selectItemBtn = document.getElementById('selectItemBtn');
+            const selectReorderBtn = document.getElementById('selectReorderBtn');
+
+            // Tab elements
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const tabContents = document.querySelectorAll('.tab-content');
+
+            let html5QrCode;
+            let scannedBarcode = null;
+
+            // --- Tab Switching Logic ---
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    if (!button.classList.contains('active') && button.dataset.tab === 'manualTab') {
+                        stopScanning();
+                    }
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
+                    tabContents.forEach(content => {
+                        content.classList.remove('active');
+                        if (content.id === button.dataset.tab) {
+                            content.classList.add('active');
+                        }
+                    });
+                });
+            });
+
+            // --- Initialize the scanner object ---
+            html5QrCode = new Html5Qrcode("qr-reader");
+
+            // --- What to do on a successful scan ---
+            const onScanSuccess = async (decodedText, decodedResult) => {
+                scannedBarcode = decodedText;
+                stopScanning();
+                scanResult.innerHTML = `${t('msg_scanned')}: <b>${decodedText}</b>`;
+                showToast(`${t('msg_scanned')} ${decodedText}`, 'success');
+
+                try {
+                    const response = await fetch(`/api/item/${scannedBarcode}`);
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || t('msg_item_not_found'));
+                    }
+                    const item = await response.json();
+                    triggerApartmentModal(item.name, scannedBarcode);
+                } catch (error) {
+                    console.error('Error fetching item:', error);
+                    showToast(`${t('msg_error')}: ${error.message}`, 'error');
+                    scannedBarcode = null;
+                }
+            };
+
+            const onScanFailure = (error) => { /* Ignore */ };
+
+            // --- Start Button Click ---
+            startButton.addEventListener('click', () => {
+                html5QrCode.start(
+                    { facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
+                    onScanSuccess, onScanFailure
+                ).then(() => {
+                    startButton.style.display = 'none';
+                    stopButton.style.display = 'block';
+                    scanResult.innerHTML = t('msg_scanning');
+                }).catch(err => {
+                    console.error("Camera start error:", err);
+                    scanResult.innerHTML = t('msg_camera_error');
+                    showToast(t('msg_camera_error'), "error");
+                });
+            });
+
+            // --- Stop Button Click ---
+            function stopScanning() {
+                if (html5QrCode && html5QrCode.getState() === 2) { // 2 = SCANNING
+                    html5QrCode.stop().then(() => {
+                        startButton.style.display = 'block';
+                        stopButton.style.display = 'none';
+                        scanResult.innerHTML = '';
+                    }).catch(err => {
+                        console.error("Scanner stop error:", err);
+                    });
+                } else {
+                     startButton.style.display = 'block';
+                     stopButton.style.display = 'none';
+                     scanResult.innerHTML = '';
+                }
+            }
+            stopButton.addEventListener('click', stopScanning);
+
+            // --- Load inventory into dropdown on page load ---
+            let allItems = [];
+            function loadItemsDropdown() {
+                fetch('/api/items')
+                    .then(res => res.json())
+                    .then(items => {
+                        allItems = items;
+                        itemDropdown.innerHTML = '<option value="">-- Select an item --</option>';
+                        items.forEach(item => {
+                            const option = document.createElement('option');
+                            option.value = item.barcode;
+                            option.dataset.id = item.id;
+                            option.dataset.name = item.name;
+                            option.textContent = `${item.name} (Stock: ${item.quantity})`;
+                            itemDropdown.appendChild(option);
+                        });
+                    })
+                    .catch(err => console.error('Error loading items:', err));
+            }
+            
+            // Load items when page loads
+            loadItemsDropdown();
+            
+            // --- Select Item Button (Log Usage) ---
+            selectItemBtn.addEventListener('click', () => {
+                const barcode = itemDropdown.value;
+                if (!barcode) {
+                    showToast(t('msg_no_items'), 'error');
+                    return;
+                }
+                const selectedOption = itemDropdown.options[itemDropdown.selectedIndex];
+                const itemName = selectedOption.dataset.name;
+                triggerApartmentModal(itemName, barcode);
+            });
+            
+            // --- Reorder Button ---
+            selectReorderBtn.addEventListener('click', () => {
+                const barcode = itemDropdown.value;
+                if (!barcode) {
+                    showToast(t('msg_no_items'), 'error');
+                    return;
+                }
+                const selectedOption = itemDropdown.options[itemDropdown.selectedIndex];
+                const itemName = selectedOption.dataset.name;
+                const itemId = selectedOption.dataset.id;
+                triggerOrderRequestModal(itemName, itemId, barcode);
+            });
+
+            // --- Helper to open Apartment Modal ---
+            function triggerApartmentModal(itemName, barcode, itemId = null) {
+                scannedBarcode = barcode;
+                itemNameEl.textContent = itemName;
+                apartmentInput.value = '';
+                employeeNumberInput.value = '';
+                quantityInput.value = '1';
+                modal.style.display = 'flex';
+                apartmentInput.focus();
+                
+                // Fetch current stock
+                fetch(`/api/item/${barcode}`)
+                    .then(res => res.json())
+                    .then(item => {
+                        const stockText = `${t('qty_available')}: ${item.quantity}`;
+                        document.getElementById('itemStock').textContent = stockText;
+                        
+                        // Show/hide Request Order button based on low stock
+                        const quickOrderBtn = document.getElementById('quickOrderBtn');
+                        // Always show the request order button
+                        quickOrderBtn.style.display = 'block';
+                        quickOrderBtn.textContent = t('btn_request_order');
+                        quickOrderBtn.onclick = () => {
+                            modal.style.display = 'none';
+                            triggerOrderRequestModal(item.name, item.id, barcode);
+                        };
+                    })
+                    .catch(err => console.error('Error fetching item:', err));
+            }
+
+            // --- Apartment Modal: Submit Button (UPDATED) ---
+            usageForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const apartment = apartmentInput.value;
+                const employeeNumber = employeeNumberInput.value;
+                const quantity = quantityInput.value;
+
+                if (!scannedBarcode || !apartment || !quantity) {
+                    showToast(t('msg_missing_fields'), 'error');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/log_usage', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            barcode: scannedBarcode, 
+                            apartment: apartment, 
+                            employee_number: employeeNumber,
+                            quantity: quantity 
+                        })
+                    });
+                    const result = await response.json();
+                    if (!response.ok) {
+                        throw new Error(result.error || t('msg_error'));
+                    }
+
+                    showToast(t('msg_logged_success'), 'success');
+                    modal.style.display = 'none';
+                    scannedBarcode = null;
+                } catch (error) {
+                    console.error('Error logging usage:', error);
+                    showToast(`${t('msg_error')}: ${error.message}`, 'error');
+                }
+            });
+
+            // --- Apartment Modal: Cancel Button ---
+            cancelBtn.addEventListener('click', () => {
+                modal.style.display = 'none';
+                scannedBarcode = null;
+            });
+
+            // --- Order Request Modal Elements ---
+            const orderModal = document.getElementById('orderRequestModal');
+            const orderItemNameEl = document.getElementById('orderItemName');
+            const orderRequestForm = document.getElementById('orderRequestForm');
+            const quantityNeededInput = document.getElementById('quantityNeededInput');
+            const orderApartmentInput = document.getElementById('orderApartmentInput');
+            const cancelOrderBtn = document.getElementById('cancelOrderBtn');
+            let currentOrderItemId = null;
+
+            // --- Helper to open Order Request Modal ---
+            function triggerOrderRequestModal(itemName, itemId, barcode = null) {
+                currentOrderItemId = itemId;
+                orderItemNameEl.textContent = itemName;
+                quantityNeededInput.value = '1';
+                orderApartmentInput.value = '';
+                orderModal.style.display = 'flex';
+                quantityNeededInput.focus();
+                
+                // Fetch current stock to display
+                if (barcode) {
+                    fetch(`/api/item/${barcode}`)
+                        .then(res => res.json())
+                        .then(item => {
+                            const stockText = `Current Stock: ${item.quantity}`;
+                            document.getElementById('orderItemStock').textContent = stockText;
+                        })
+                        .catch(err => console.error('Error fetching item:', err));
+                } else {
+                    // Get barcode from allItems array by itemId
+                    const item = allItems.find(i => i.id === parseInt(itemId));
+                    if (item) {
+                        fetch(`/api/item/${item.barcode}`)
+                            .then(res => res.json())
+                            .then(data => {
+                                const stockText = `Current Stock: ${data.quantity}`;
+                                document.getElementById('orderItemStock').textContent = stockText;
+                            })
+                            .catch(err => console.error('Error fetching item:', err));
+                    }
+                }
+            }
+
+            // --- Order Request Modal: Submit Button ---
+            orderRequestForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const apartment = orderApartmentInput.value;
+                const quantity = quantityNeededInput.value;
+                const orderUrl = document.getElementById('orderUrlInput').value;
+
+                if (!currentOrderItemId || !apartment || !quantity) {
+                    showToast(t('msg_missing_fields'), 'error');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/order_request', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            item_id: currentOrderItemId,
+                            apartment_number: apartment,
+                            quantity_needed: quantity,
+                            reorder_url: orderUrl || null
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (response.ok) {
+                        showToast(t('msg_order_submitted'), 'success');
+                        orderModal.style.display = 'none';
+                        document.getElementById('orderUrlInput').value = '';
+                        currentOrderItemId = null;
+                    } else {
+                        showToast(result.error || t('msg_error'), 'error');
+                    }
+                } catch (error) {
+                    console.error('Error submitting order request:', error);
+                    showToast(t('msg_error'), 'error');
+                }
+            });
+
+            // --- Order Request Modal: Cancel Button ---
+            cancelOrderBtn.addEventListener('click', () => {
+                orderModal.style.display = 'none';
+                currentOrderItemId = null;
+            });
+
+            // --- Helper function to show messages ---
+            function showToast(message, type = '') {
+                toast.textContent = message;
+                toast.className = type;
+                toast.style.display = 'block';
+                setTimeout(() => { toast.style.display = 'none'; }, 3000);
+            }
+        });
+
+        // Register Service Worker for PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then((registration) => {
+                        console.log('ServiceWorker registered:', registration.scope);
+                    })
+                    .catch((error) => {
+                        console.log('ServiceWorker registration failed:', error);
+                    });
+            });
+        }
+    </script>
+
+</body>
+</html>

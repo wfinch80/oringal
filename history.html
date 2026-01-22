@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#3b82f6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="description" content="Usage History - Inventory Management">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
+    <title>Usage History</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 20px; background-color: #f4f7f6; }
+        h1 { color: #333; }
+        .nav-links { margin-bottom: 20px; }
+        .nav-links a { padding: 10px 15px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px; margin-right: 10px; display: inline-block; }
+        .nav-links a:hover { background-color: #0056b3; }
+        .filter-section { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .filter-section input { padding: 10px; margin-right: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; width: 200px; }
+        .filter-section button { background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        .filter-section button:hover { background-color: #218838; }
+        .history-card { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #f0f0f0; font-weight: bold; }
+        tr:hover { background-color: #f9f9f9; }
+        .no-data { text-align: center; padding: 40px; color: #666; font-style: italic; }
+        .export-btn { background-color: #17a2b8; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-left: 10px; }
+        .export-btn:hover { background-color: #138496; }
+        .language-selector { text-align: center; margin: 15px 0; }
+        .language-selector button { background-color: #007bff; color: white; border: none; padding: 8px 16px; margin: 0 5px; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; }
+        .language-selector button.active { background-color: #0056b3; font-weight: bold; }
+        .language-selector button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+
+    <h1 data-i18n="title">Usage History</h1>
+
+    <div class="language-selector">
+        <button id="langEN" class="active">English</button>
+        <button id="langES">Español</button>
+    </div>
+
+    <div class="nav-links">
+        <a href="/" data-i18n="nav_scanner">Scanner</a>
+        <a href="/admin" data-i18n="nav_admin">Admin Dashboard</a>
+    </div>
+
+    <div class="filter-section">
+        <h2 data-i18n="filter_title">Filter History</h2>
+        <input type="text" id="apartmentFilter" data-i18n-placeholder="filter_apartment" placeholder="Filter by apartment...">
+        <input type="text" id="employeeFilter" data-i18n-placeholder="filter_employee" placeholder="Filter by employee...">
+        <input type="text" id="itemFilter" data-i18n-placeholder="filter_item" placeholder="Filter by item name...">
+        <button id="applyFilterBtn" data-i18n="btn_apply">Apply Filter</button>
+        <button id="clearFilterBtn" data-i18n="btn_clear" style="background-color: #6c757d;">Clear</button>
+        <button id="exportBtn" class="export-btn" data-i18n="btn_export">Export to CSV</button>
+    </div>
+
+    <div class="history-card">
+        <h2 data-i18n="history_title">Checkout History</h2>
+        <div id="historyCount" style="margin-bottom: 10px; color: #666;"></div>
+        <table id="historyTable">
+            <thead>
+                <tr>
+                    <th data-i18n="th_datetime">Date & Time</th>
+                    <th data-i18n="th_item">Item Name</th>
+                    <th data-i18n="th_category">Category</th>
+                    <th data-i18n="th_apartment">Apartment</th>
+                    <th data-i18n="th_employee">Employee</th>
+                    <th data-i18n="th_quantity">Quantity Used</th>
+                    <th data-i18n="th_barcode">Barcode</th>
+                </tr>
+            </thead>
+            <tbody id="historyTableBody">
+                <tr><td colspan="7" class="no-data" data-i18n="msg_loading">Loading history...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // === TRANSLATION SYSTEM ===
+        const translations = {
+            en: {
+                title: "Usage History",
+                nav_scanner: "Scanner",
+                nav_admin: "Admin Dashboard",
+                filter_title: "Filter History",
+                filter_apartment: "Filter by apartment...",
+                filter_employee: "Filter by employee...",
+                filter_item: "Filter by item name...",
+                btn_apply: "Apply Filter",
+                btn_clear: "Clear",
+                btn_export: "Export to CSV",
+                history_title: "Checkout History",
+                th_datetime: "Date & Time",
+                th_item: "Item Name",
+                th_category: "Category",
+                th_apartment: "Apartment",
+                th_employee: "Employee",
+                th_quantity: "Quantity Used",
+                th_barcode: "Barcode",
+                msg_loading: "Loading history...",
+                msg_no_data: "No checkout history found",
+                msg_showing: "Showing",
+                msg_records: "records",
+                msg_record: "record",
+                msg_error_loading: "Error loading history",
+                msg_no_export: "No data to export"
+            },
+            es: {
+                title: "Historial de Uso",
+                nav_scanner: "Escáner",
+                nav_admin: "Panel de Admin",
+                filter_title: "Filtrar Historial",
+                filter_apartment: "Filtrar por apartamento...",
+                filter_employee: "Filtrar por empleado...",
+                filter_item: "Filtrar por nombre...",
+                btn_apply: "Aplicar Filtro",
+                btn_clear: "Limpiar",
+                btn_export: "Exportar a CSV",
+                history_title: "Historial de Retiros",
+                th_datetime: "Fecha y Hora",
+                th_item: "Nombre del Artículo",
+                th_category: "Categoría",
+                th_apartment: "Apartamento",
+                th_employee: "Empleado",
+                th_quantity: "Cantidad Usada",
+                th_barcode: "Código de Barras",
+                msg_loading: "Cargando historial...",
+                msg_no_data: "No se encontró historial",
+                msg_showing: "Mostrando",
+                msg_records: "registros",
+                msg_record: "registro",
+                msg_error_loading: "Error al cargar historial",
+                msg_no_export: "No hay datos para exportar"
+            }
+        };
+
+        let currentLang = localStorage.getItem('inventoryLang') || 'en';
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            localStorage.setItem('inventoryLang', lang);
+            
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (translations[lang][key]) {
+                    el.textContent = translations[lang][key];
+                }
+            });
+            
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.getAttribute('data-i18n-placeholder');
+                if (translations[lang][key]) {
+                    el.placeholder = translations[lang][key];
+                }
+            });
+            
+            document.getElementById('langEN').classList.toggle('active', lang === 'en');
+            document.getElementById('langES').classList.toggle('active', lang === 'es');
+        }
+
+        function t(key) {
+            return translations[currentLang][key] || key;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setLanguage(currentLang);
+            document.getElementById('langEN').addEventListener('click', () => setLanguage('en'));
+            document.getElementById('langES').addEventListener('click', () => setLanguage('es'));
+        });
+    </script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const historyTableBody = document.getElementById('historyTableBody');
+            const apartmentFilter = document.getElementById('apartmentFilter');
+            const employeeFilter = document.getElementById('employeeFilter');
+            const itemFilter = document.getElementById('itemFilter');
+            const applyFilterBtn = document.getElementById('applyFilterBtn');
+            const clearFilterBtn = document.getElementById('clearFilterBtn');
+            const exportBtn = document.getElementById('exportBtn');
+            const historyCount = document.getElementById('historyCount');
+
+            let currentHistory = [];
+
+            async function fetchHistory() {
+                try {
+                    const apartment = apartmentFilter.value.trim();
+                    const employee = employeeFilter.value.trim();
+                    const itemName = itemFilter.value.trim();
+                    
+                    let url = '/api/usage_history?limit=500';
+                    if (apartment) url += `&apartment=${encodeURIComponent(apartment)}`;
+                    if (employee) url += `&employee_number=${encodeURIComponent(employee)}`;
+                    if (itemName) url += `&item_name=${encodeURIComponent(itemName)}`;
+
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error('Failed to fetch history');
+                    
+                    const history = await response.json();
+                    currentHistory = history;
+                    renderHistory(history);
+                } catch (error) {
+                    console.error('Error fetching history:', error);
+                    historyTableBody.innerHTML = `<tr><td colspan="7" class="no-data">${t('msg_error_loading')}</td></tr>`;
+                }
+            }
+
+            function formatDateTime(timestamp) {
+                const date = new Date(timestamp.replace(' ', 'T'));
+                const options = { 
+                    year: 'numeric', 
+                    month: 'short', 
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                };
+                const locale = currentLang === 'es' ? 'es-ES' : 'en-US';
+                return date.toLocaleString(locale, options);
+            }
+
+            function renderHistory(history) {
+                historyTableBody.innerHTML = '';
+                
+                if (history.length === 0) {
+                    historyTableBody.innerHTML = `<tr><td colspan="7" class="no-data">${t('msg_no_data')}</td></tr>`;
+                    historyCount.textContent = `${t('msg_showing')} 0 ${t('msg_records')}`;
+                    return;
+                }
+
+                const recordText = history.length !== 1 ? t('msg_records') : t('msg_record');
+                historyCount.textContent = `${t('msg_showing')} ${history.length} ${recordText}`;
+
+                history.forEach(log => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${formatDateTime(log.timestamp)}</td>
+                        <td><strong>${log.item_name}</strong></td>
+                        <td>${log.item_category || '-'}</td>
+                        <td><strong>${log.apartment_number}</strong></td>
+                        <td>${log.employee_number || '-'}</td>
+                        <td>${log.quantity_used}</td>
+                        <td>${log.item_barcode}</td>
+                    `;
+                    historyTableBody.appendChild(row);
+                });
+            }
+
+            function exportToCSV() {
+                if (currentHistory.length === 0) {
+                    alert(t('msg_no_export'));
+                    return;
+                }
+
+                let csvContent = "data:text/csv;charset=utf-8,";
+                csvContent += "Date & Time,Item Name,Category,Apartment,Employee,Quantity Used,Barcode\n";
+                
+                currentHistory.forEach(log => {
+                    const category = log.item_category || '';
+                    const employee = log.employee_number || '';
+                    csvContent += `"${log.timestamp}","${log.item_name}","${category}","${log.apartment_number}","${employee}",${log.quantity_used},"${log.item_barcode}"\n`;
+                });
+                
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", "usage_history.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+
+            applyFilterBtn.addEventListener('click', fetchHistory);
+            clearFilterBtn.addEventListener('click', () => {
+                apartmentFilter.value = '';
+                employeeFilter.value = '';
+                itemFilter.value = '';
+                fetchHistory();
+            });
+            exportBtn.addEventListener('click', exportToCSV);
+
+            apartmentFilter.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') fetchHistory();
+            });
+            employeeFilter.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') fetchHistory();
+            });
+            itemFilter.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') fetchHistory();
+            });
+
+            fetchHistory();
+        });
+    </script>
+
+</body>
+</html>
